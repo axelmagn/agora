@@ -6,9 +6,13 @@
 //! runtime. Similarly, structs may need to be converted to more efficient
 //! representations for simulation.
 
-use std::{collections::BTreeMap, ops::Add, time::Duration};
+use std::{
+    collections::BTreeMap,
+    ops::{Add, Mul},
+    time::Duration,
+};
 
-use serde::{Deserialize, Serialize};
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 
 /// A ware that is produced and consumed.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -34,6 +38,7 @@ pub type PopulationClassId = String;
 /// Recipes are processes that convert input wares into output wares.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Recipe {
+    pub display_name: String,
     /// The building this recipe is performed in.
     pub building: BuildingTypeId,
     /// The input and output ware amounts, with inputs represented by negative
@@ -47,12 +52,19 @@ pub struct Recipe {
 }
 pub type RecipeId = String;
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct Balance<K> {
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(bound = "K: DeserializeOwned")]
+pub struct Balance<K>
+where
+    K: Ord + Serialize + DeserializeOwned,
+{
     amounts: BTreeMap<K, i64>,
 }
 
-impl<K> Balance<K> {
+impl<K> Balance<K>
+where
+    K: Ord + Serialize + DeserializeOwned,
+{
     pub fn new() -> Self {
         Self {
             amounts: BTreeMap::new(),
@@ -60,9 +72,18 @@ impl<K> Balance<K> {
     }
 }
 
+impl<K> Default for Balance<K>
+where
+    K: Ord + Serialize + DeserializeOwned,
+{
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<K> Add for &Balance<K>
 where
-    K: Clone + Ord,
+    K: Clone + Ord + Serialize + DeserializeOwned,
 {
     type Output = Balance<K>;
 
@@ -73,5 +94,23 @@ where
             *lhs_value += rhs_value;
         }
         out
+    }
+}
+
+impl<K> Mul<i64> for &Balance<K>
+where
+    K: Clone + Ord + Serialize + DeserializeOwned,
+{
+    type Output = Balance<K>;
+
+    fn mul(self, rhs: i64) -> Self::Output {
+        let new_amounts = self
+            .amounts
+            .iter()
+            .map(|(k, v)| (k.clone(), v + rhs))
+            .collect();
+        Balance {
+            amounts: new_amounts,
+        }
     }
 }
